@@ -1,0 +1,127 @@
+`timescale 1ns/1ps
+
+module alu_tb;
+    reg [15:0] A, B;      
+    reg [2:0] op;         
+    wire [15:0] Alu_out;   
+    wire [2:0] flags; 
+
+    alu uut (
+        .A(A),
+        .B(B),
+        .op(op),
+        .Alu_out(Alu_out),
+        .flags(flags)
+    );
+  
+    initial begin
+        $monitor("Time=%0t | A=%h, B=%h, op=%b | Alu_out=%h, flags=%b", 
+                 $time, A, B, op, Alu_out, flags);
+        $dumpfile("dump.vcd");
+        $dumpvars(1,alu_tb);
+
+        // Test Case 1: Addition
+        A = 16'h0005; B = 16'h0003; op = 3'b000; #10;
+        
+        // Test Case 2: Subtraction
+        A = 16'h0005; B = 16'h0003; op = 3'b001; #10;
+        
+        // Test Case 3: Compare A and B
+        A = 16'hFFFF; B = 16'hFFFF; op = 3'b010; #10;
+        
+        // Test Case 4: Increment
+        A = 16'hFFFF; B = 16'h0000; op = 3'b011; #10;
+        
+        // Test Case 5: Bitwise AND
+        A = 16'h00FF; B = 16'h0F0F; op = 3'b100; #10;
+        
+        // Test Case 6: Bitwise OR
+        A = 16'h00FF; B = 16'h0F0F; op = 3'b101; #10;
+        
+        // Test Case 7: Bitwise NOT A
+        A = 16'h00FF; B = 16'h0000; op = 3'b110; #10;
+        
+        // Test Case 8: Bitwise NOT B
+        A = 16'h0000; B = 16'h0F0F; op = 3'b111; #10;
+        
+        $finish;
+    end
+endmodule
+
+
+module alu(
+    input [15:0] A, B, 
+    input [2:0] op,
+    output reg [15:0] Alu_out, 
+    output reg [2:0] flags // [2] = Sign, [1] = Zero, [0] = Carry
+);
+    reg [16:0] temp; // Temporary register
+
+    always @(*) begin
+        flags = 3'b000;
+        Alu_out = 16'h0000;
+
+        case (op)
+            3'b000: begin // Addition
+                temp = {1'b0, A} + {1'b0, B};
+                Alu_out = temp[15:0];
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15]; 
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0; 
+            end
+            
+            3'b001: begin // Subtraction
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out = temp[15:0];
+                flags[0] = temp[16]; 
+                flags[2] = Alu_out[15]; 
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b010: begin // Compare A and B
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out =16'h0000;
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b011: begin // Increment A
+                temp = {1'b0, A} + 1;
+                Alu_out = temp[15:0];
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b100: begin // Bitwise AND
+                Alu_out = A & B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b101: begin // Bitwise OR
+                Alu_out = A | B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b110: begin // Bitwise NOT A
+                Alu_out = ~A;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b111: begin // Bitwise NOT B
+                Alu_out = ~B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            default: begin
+                Alu_out = 16'h0000;
+                flags = 3'b000;
+            end
+        endcase
+    end
+endmodule

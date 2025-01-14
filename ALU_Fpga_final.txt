@@ -1,0 +1,439 @@
+module alu_top(a,b,op,clk,rst,alu_out,flags,anode,cathode);
+input [15:0] a,b;
+input [2:0] op;
+input clk,rst;
+output wire[3:0] anode;
+output wire[7:0] cathode;
+output wire[15:0] alu_out;
+output wire[2:0] flags;
+
+alu_sub l1(a,b,op,alu_out,flags);
+SSD l2(clk,rst,alu_out,anode,cathode);
+
+endmodule
+
+module alu_sub(
+    input [15:0] A, B, 
+    input [2:0] op,
+    output wire [15:0] Alu_out, 
+    output wire [2:0] flags // [2] = Sign, [1] = Zero, [0] = Carry
+);
+    reg [16:0] temp; // Temporary register
+
+    always @(*) begin
+        flags = 3'b000;
+        Alu_out = 16'h0000;
+
+        case (op)
+            3'b000: begin // Addition
+                temp = {1'b0, A} + {1'b0, B};
+                Alu_out = temp[15:0];
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15]; 
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0; 
+            end
+            
+            3'b001: begin // Subtraction
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out = temp[15:0];
+                flags[0] = temp[16]; 
+                flags[2] = Alu_out[15]; 
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b010: begin // Compare A and B
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out =16'h0000;
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b011: begin // Increment A
+                temp = {1'b0, A} + 1;
+                Alu_out = temp[15:0];
+                flags[0] = temp[16];
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b100: begin // Bitwise AND
+                Alu_out = A & B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b101: begin // Bitwise OR
+                Alu_out = A | B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b110: begin // Bitwise NOT A
+                Alu_out = ~A;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            3'b111: begin // Bitwise NOT B
+                Alu_out = ~B;
+                flags[2] = Alu_out[15];
+                flags[1] = (Alu_out == 16'h0000) ? 1'b1 : 1'b0;
+            end
+            
+            default: begin
+                Alu_out = 16'h0000;
+                flags = 3'b000;
+            end
+        endcase
+    end
+endmodule
+
+module SSD(clk,rst,sw,anode,cathode);
+input wire clk,rst;
+input wire[15:0] sw;
+output wire[3:0] anode;
+output wire[7:0] cathode;
+
+wire newclk;
+wire[1:0] count;
+wire[3:0] BCD;
+clkdiv k1(clk,rst,newclk);
+counter k2(newclk,count);
+muxC k3(sw[15:12],sw[11:8],sw[7:4],sw[3:0],count,BCD);
+anode_gen k4(count,anode);
+cathode_gen k5(BCD,cathode);
+endmodule
+
+module clkdiv(clk,rst,newclk);
+input clk,rst;
+output wire newclk;
+reg[31:0] temp;
+initial temp=32'b0;
+always@(posedge clk)
+begin
+if(rst) temp=32'b0;
+else temp=temp+1;
+end
+assign newclk=temp[12];
+endmodule
+
+module counter(newclk,count);
+input newclk;
+output reg[1:0] count;
+always@(posedge newclk)
+count<=count+1;
+endmodule
+
+module muxC(in1,in2,in3,in4,count,BCD);
+input[3:0] in1,in2,in3,in4;
+input[1:0] count;
+output reg[3:0] BCD=0;
+always@(count)
+begin
+case(count)
+2'b00:BCD=in1;
+2'b01:BCD=in2;
+2'b10:BCD=in3;
+2'b11:BCD=in4;
+endcase
+end
+endmodule
+
+module cathode_gen(BCD,cathode);
+input[3:0] BCD;
+output reg[7:0] cathode=0;
+always@(BCD)
+begin
+case(BCD)
+4'b0000:cathode=8'h03;//0
+4'b0001:cathode=8'h9F;//1
+4'b0010:cathode=8'h25;//2
+4'b0011:cathode=8'h0D;//3
+4'b0100:cathode=8'h99;//4
+4'b0101:cathode=8'h49;//5
+4'b0110:cathode=8'h41;//6
+4'b0111:cathode=8'h1F;//7
+4'b1000:cathode=8'h01;//8
+4'b1001:cathode=8'h19;//9
+4'b1010:cathode=8'h11;//A
+4'b1011:cathode=8'hC1;//B
+4'b1100:cathode=8'h63;//C
+4'b1101:cathode=8'h85;//D
+4'b1110:cathode=8'h61;//E
+4'b1111:cathode=8'h71;//F
+default cathode=8'hFF;
+endcase
+end
+endmodule
+
+module anode_gen(count,anode);
+input[1:0] count;
+output reg[3:0] anode=0;
+always@(count)
+begin
+case(count)
+2'b00: anode=4'b0001;
+2'b01: anode=4'b0010;
+2'b10: anode=4'b0100;
+2'b11: anode=4'b1000;
+endcase
+end
+endmodule
+
+
+
+
+
+
+
+
+
+
+
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 30.11.2024 11:26:33
+// Design Name: 
+// Module Name: ALU_sub
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+module alu_top(a,b,op,clk_0,rst,alu_out,flags,anode,cathode);
+input [15:0] a,b;
+input [2:0] op;
+input clk_0,rst;
+output wire[3:0] anode;
+output wire[7:0] cathode;
+output wire[15:0] alu_out;
+output wire[2:0] flags;
+wire clk_div; // Divided clock signal
+
+    alu_sub l1(a, b, op, clk_0, rst, alu_out, flags);
+    SSD l2(clk_div, rst, alu_out, anode, cathode);
+
+    // Clock divider instantiation
+    clkdiv clk_div_inst(
+        .clk(clk_0),  // Connect the clock signal
+        .rst(rst),
+        .newclk(clk_div) // Output the divided clock
+    );
+endmodule
+
+module alu_sub(
+    input [15:0] A, B,
+    input [2:0] op,
+    input clk, rst, // Added clock and reset
+    output reg [15:0] Alu_out,
+    output reg [2:0] flags // [2] = Sign, [1] = Zero, [0] = Carry
+);
+    reg [15:0] Alu_out_next;  // Next state for ALU output
+    reg [2:0] flags_next;     // Next state for flags
+    reg [16:0] temp;          // Temporary register for calculations
+
+    // Combinational logic for ALU operations
+    always @(*) begin
+        temp = 17'b0;
+        Alu_out_next = 16'h0000;
+        flags_next = 3'b000;
+
+        case (op)
+            3'b000: begin // Addition
+                temp = {1'b0, A} + {1'b0, B};
+                Alu_out_next = temp[15:0];
+                flags_next[0] = temp[16];         // Carry
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b001: begin // Subtraction
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out_next = temp[15:0];
+                flags_next[0] = temp[16];         // Borrow
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b010: begin // Compare A and B
+                temp = {1'b0, A} - {1'b0, B};
+                Alu_out_next = 16'h0000;          // Compare has no result
+                flags_next[0] = temp[16];         // Borrow
+                flags_next[2] = 1'b0;             // No sign bit for comparison
+                flags_next[1] = (temp[15:0] == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b011: begin // Increment A
+                temp = {1'b0, A} + 1;
+                Alu_out_next = temp[15:0];
+                flags_next[0] = temp[16];         // Carry
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b100: begin // Bitwise AND
+                Alu_out_next = A & B;
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b101: begin // Bitwise OR
+                Alu_out_next = A | B;
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b110: begin // Bitwise NOT A
+                Alu_out_next = ~A;
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            3'b111: begin // Bitwise NOT B
+                Alu_out_next = ~B;
+                flags_next[2] = Alu_out_next[15]; // Sign
+                flags_next[1] = (Alu_out_next == 16'h0000) ? 1'b1 : 1'b0; // Zero
+            end
+            
+            default: begin
+                Alu_out_next = 16'h0000;
+                flags_next = 3'b000;
+            end
+        endcase
+    end
+
+    // Sequential logic for registering outputs
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            Alu_out <= 16'b0;
+            flags <= 3'b0;
+        end else begin
+            Alu_out <= Alu_out_next;
+            flags <= flags_next;
+        end
+    end
+endmodule
+
+module SSD(clk,rst,sw,anode,cathode);
+input wire clk,rst;
+input wire[15:0] sw;
+output wire[3:0] anode;
+output wire[7:0] cathode;
+
+wire newclk;
+wire[1:0] count;
+wire[3:0] BCD;
+clkdiv k1(clk,rst,newclk);
+counter k2(newclk,count);
+muxC k3(sw[15:12],sw[11:8],sw[7:4],sw[3:0],count,BCD);
+anode_gen k4(count,anode);
+cathode_gen k5(BCD,cathode);
+endmodule
+
+module clkdiv(
+    input clk,   // Clock input
+    input rst,   // Reset input
+    output reg newclk // Divided clock output
+);
+    reg [23:0] temp; // Reduced the size for simpler timing
+
+    // Sequential logic for clock division
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            temp <= 24'b0;   // Reset temp
+            newclk <= 1'b0;  // Reset new clock
+        end else begin
+            temp <= temp + 1; // Increment temp
+            newclk <= temp[23]; // Assign divided clock
+        end
+    end
+endmodule
+
+module counter(newclk,count);
+input newclk;
+output reg[1:0] count;
+always@(posedge newclk)
+count<=count+1;
+endmodule
+
+module muxC(in1,in2,in3,in4,count,BCD);
+input[3:0] in1,in2,in3,in4;
+input[1:0] count;
+output reg[3:0] BCD=0;
+always@(count)
+begin
+case(count)
+2'b00:BCD=in1;
+2'b01:BCD=in2;
+2'b10:BCD=in3;
+2'b11:BCD=in4;
+endcase
+end
+endmodule
+
+module cathode_gen(BCD,cathode);
+input[3:0] BCD;
+output reg[7:0] cathode=0;
+always@(BCD)
+begin
+case(BCD)
+4'b0000:cathode=8'h03;//0
+4'b0001:cathode=8'h9F;//1
+4'b0010:cathode=8'h25;//2
+4'b0011:cathode=8'h0D;//3
+4'b0100:cathode=8'h99;//4
+4'b0101:cathode=8'h49;//5
+4'b0110:cathode=8'h41;//6
+4'b0111:cathode=8'h1F;//7
+4'b1000:cathode=8'h01;//8
+4'b1001:cathode=8'h19;//9
+4'b1010:cathode=8'h11;//A
+4'b1011:cathode=8'hC1;//B
+4'b1100:cathode=8'h63;//C
+4'b1101:cathode=8'h85;//D
+4'b1110:cathode=8'h61;//E
+4'b1111:cathode=8'h71;//F
+default cathode=8'hFF;
+endcase
+end
+endmodule
+
+module anode_gen(count,anode);
+input[1:0] count;
+output reg[3:0] anode=0;
+always@(count)
+begin
+case(count)
+2'b00: anode=4'b0001;
+2'b01: anode=4'b0010;
+2'b10: anode=4'b0100;
+2'b11: anode=4'b1000;
+endcase
+end
+endmodule
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
